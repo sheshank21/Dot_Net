@@ -1,0 +1,30 @@
+import { ComponentFixture, TestBed } from '@angular/core/testing';
+import { YourComponent } from './your-component.component';
+import { FormControl } from '@angular/forms';
+
+describe('YourComponent', () => {
+  let component: YourComponent;
+  let fixture: ComponentFixture<YourComponent>;
+
+  beforeEach(async () => {
+    await TestBed.configureTestingModule({
+      declarations: [YourComponent]
+    })
+    .compileComponents();
+  });
+
+  beforeEach(() => {
+    fixture = TestBed.createComponent(YourComponent);
+    component = fixture.componentInstance;
+    fixture.detectChanges();
+  });
+
+  it('should set control value based on event.checked', () => {
+    const index = 1; // Example index
+    const event = { checked: true }; // Example event object
+
+    component.toggelSingle(event, index);
+
+    expect(component.interventionRulesForArray.controles[index].value).toBe(true);
+  });
+});
