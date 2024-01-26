@@ -1,0 +1,355 @@
+using Excellus.Azure.Rxcc.Api.Models.Formulary;
+using Excellus.Azure.Rxcc.Api.Models.InterventionRule;
+using Excellus.Azure.Rxcc.Api.RxccInterventionRule.Data;
+using Excellus.Azure.Rxcc.Api.RxccInterventionRule.Domain.Exceptions;
+using Excellus.Azure.Rxcc.Api.RxccInterventionRule.Handlers;
+using Excellus.Azure.Rxcc.Api.RxccInterventionRule.Model;
+using Excellus.Azure.Rxcc.Api.RxccInterventionRule.Model.Requests;
+using Microsoft.Extensions.Logging;
+using Moq;
+using RxCC.Shared.Exceptions;
+using RxCC.Shared.ExternalApi;
+using RxCC.Shared.ExternalApi.Adapters;
+using RxCC.Shared.ExternalApi.Requests;
+using System.Collections.Generic;
+using System.Data;
+using System.Threading;
+using System.Threading.Tasks;
+using Xunit;
+using static Excellus.Azure.Rxcc.Api.Models.InterventionRule.InterventionRule;
+
+namespace Excellus.Azure.Rxcc.Api.RxccFormulary.Tests.HandlerTests;
+public class UpdateInterventionRulesHandlerTests
+{
+    public UpdateInterventionRulesHandlerTests()
+    {
+
+    }
+
+    [Fact]
+    public async Task Handler_Succeeds_Add()
+    {
+        UpdateInterventionRuleRequest request = GetRequest();
+
+        var rxccGroup = new RxccGroup()
+        {
+            RxccGroupName = "rxccGroupName",
+            FormularyId = "formularyId",
+            AdTenantId = "adTenantId",
+        };
+
+        var interventionRules = new List<InterventionRule>()
+        {
+            new InterventionRule()
+            {
+                ruleId = "ruleId",
+                formularyTenantsGroups = new List<InterventionRule.FormularyTenantGroup>{
+                    new InterventionRule.FormularyTenantGroup()
+                    {
+                        formularyId = "formularyId",
+                        tenantGroups = new List<InterventionRule.TenantGroup>()
+                        {
+                            new InterventionRule.TenantGroup()
+                            {
+                                adTenantId = "adTenantId",
+                                rxccGroupName = new List<string>() { "rxccGroupName2" }.ToArray()
+                            }
+                        }.ToArray()
+                    }
+                }.ToArray()
+            }
+        };
+
+        UpdateInterventionRulesHandler handler = GetHandler(rxccGroup, interventionRules);
+
+        var response = await handler.Handle(
+            request,
+            CancellationToken.None
+            );
+
+        Assert.NotNull(response);
+    }
+
+    [Fact]
+    public async Task Handler_Succeeds_Add_No_TenantGroup()
+    {
+        UpdateInterventionRuleRequest request = GetRequest();
+
+        var rxccGroup = new RxccGroup()
+        {
+            RxccGroupName = "rxccGroupName",
+            FormularyId = "formularyId",
+            AdTenantId = "adTenantId",
+        };
+
+        var interventionRules = new List<InterventionRule>()
+        {
+            new InterventionRule()
+            {
+                ruleId = "ruleId",
+                formularyTenantsGroups = new List<InterventionRule.FormularyTenantGroup>{
+                    new InterventionRule.FormularyTenantGroup()
+                    {
+                        formularyId = "formularyId",
+                    }
+                }.ToArray()
+            }
+        };
+
+        UpdateInterventionRulesHandler handler = GetHandler(rxccGroup, interventionRules);
+
+        var response = await handler.Handle(
+            request,
+            CancellationToken.None
+            );
+
+        Assert.NotNull(response);
+    }
+
+    [Fact]
+    public async Task Handler_Succeeds_Add_No_FormularyTenantGroup()
+    {
+        UpdateInterventionRuleRequest request = GetRequest();
+
+        var rxccGroup = new RxccGroup()
+        {
+            RxccGroupName = "rxccGroupName",
+            FormularyId = "formularyId",
+            AdTenantId = "adTenantId",
+        };
+
+        var interventionRules = new List<InterventionRule>()
+        {
+            new InterventionRule()
+            {
+                ruleId = "ruleId",
+            }
+        };
+
+        UpdateInterventionRulesHandler handler = GetHandler(rxccGroup, interventionRules);
+
+        var response = await handler.Handle(
+            request,
+            CancellationToken.None
+            );
+
+        Assert.NotNull(response);
+    }
+
+    [Fact]
+    public async Task Handler_Succeeds_Remove()
+    {
+        UpdateInterventionRuleRequest request = GetRequest(false);
+
+        var rxccGroup = new RxccGroup()
+        {
+            RxccGroupName = "rxccGroupName",
+            FormularyId = "formularyId",
+            AdTenantId = "adTenantId",
+        };
+
+        var interventionRules = new List<InterventionRule>()
+        {
+            new InterventionRule()
+            {
+                ruleId = "ruleId",
+                formularyTenantsGroups = new List<InterventionRule.FormularyTenantGroup>{
+                    new InterventionRule.FormularyTenantGroup()
+                    {
+                        formularyId = "formularyId",
+                        tenantGroups = new List<InterventionRule.TenantGroup>()
+                        {
+                            new InterventionRule.TenantGroup()
+                            {
+                                adTenantId = "adTenantId",
+                                rxccGroupName = new List<string>() { "rxccGroupName" }.ToArray()
+                            }
+                        }.ToArray()
+                    }
+                }.ToArray()
+            }
+        };
+
+        UpdateInterventionRulesHandler handler = GetHandler(rxccGroup, interventionRules);
+
+        var response = await handler.Handle(
+            request,
+            CancellationToken.None
+            );
+
+        Assert.NotNull(response);
+    }
+
+    [Fact]
+    public async Task Handler_Succeeds_Remove_No_TenantGroup()
+    {
+        UpdateInterventionRuleRequest request = GetRequest(false);
+
+        var rxccGroup = new RxccGroup()
+        {
+            RxccGroupName = "rxccGroupName",
+            FormularyId = "formularyId",
+            AdTenantId = "adTenantId",
+        };
+
+        var interventionRules = new List<InterventionRule>()
+        {
+            new InterventionRule()
+            {
+                ruleId = "ruleId",
+                formularyTenantsGroups = new List<InterventionRule.FormularyTenantGroup>{
+                    new InterventionRule.FormularyTenantGroup()
+                    {
+                        formularyId = "formularyId",
+                    }
+                }.ToArray()
+            }
+        };
+
+        UpdateInterventionRulesHandler handler = GetHandler(rxccGroup, interventionRules);
+
+        var response = await handler.Handle(
+            request,
+            CancellationToken.None
+            );
+
+        Assert.NotNull(response);
+    }
+
+    [Fact]
+    public async Task Handler_Succeeds_Remove_No_FormularyTenantsGroups()
+    {
+        UpdateInterventionRuleRequest request = GetRequest(false);
+
+        var rxccGroup = new RxccGroup()
+        {
+            RxccGroupName = "rxccGroupName",
+            FormularyId = "formularyId",
+            AdTenantId = "adTenantId",
+        };
+
+        var interventionRules = new List<InterventionRule>()
+        {
+            new InterventionRule()
+            {
+                ruleId = "ruleId",
+            }
+        };
+
+        UpdateInterventionRulesHandler handler = GetHandler(rxccGroup, interventionRules);
+
+        var response = await handler.Handle(
+            request,
+            CancellationToken.None
+            );
+
+        Assert.NotNull(response);
+    }
+
+    [Fact]
+    public async Task Handler_Throws_Error_RxccGroup_null()
+    {
+        UpdateInterventionRuleRequest request = GetRequest();
+
+        RxccGroup rxccGroup = null;
+
+        UpdateInterventionRulesHandler handler = GetHandler(rxccGroup, null);
+
+        var response = await Assert.ThrowsAsync<NotFoundException>(() => handler.Handle(request, CancellationToken.None));
+
+        Assert.Equal("rxccGroupId: '' could not be found.", response.Message);
+    }
+
+    [Fact]
+    public async Task Handler_Throws_Error_FormularyId_null()
+    {
+        UpdateInterventionRuleRequest request = GetRequest();
+
+        var rxccGroup = new RxccGroup()
+        {
+            RxccGroupName = "rxccGroupName",
+            AdTenantId = "adTenantId",
+        };
+
+        UpdateInterventionRulesHandler handler = GetHandler(rxccGroup, null);
+
+        var response = await Assert.ThrowsAsync<NotFoundException>(() => handler.Handle(request, CancellationToken.None));
+
+        Assert.Equal("rxccGroup: must have a formulary id", response.Message);
+    }
+
+    [Fact]
+    public async Task Handler_Throws_Error_AdTenantId_null()
+    {
+        UpdateInterventionRuleRequest request = GetRequest();
+
+        var rxccGroup = new RxccGroup()
+        {
+            RxccGroupName = "rxccGroupName",
+            FormularyId = "formularyId",
+        };
+        UpdateInterventionRulesHandler handler = GetHandler(rxccGroup, null);
+
+        var response = await Assert.ThrowsAsync<NotFoundException>(() => handler.Handle(request, CancellationToken.None));
+
+        Assert.Equal("rxccGroup: must have an adTenant id", response.Message);
+    }
+
+    [Fact]
+    public async Task Handler_Throws_Error_RxccGroupName_null()
+    {
+        UpdateInterventionRuleRequest request = GetRequest();
+
+        var rxccGroup = new RxccGroup()
+        {
+            FormularyId = "formularyId",
+            AdTenantId = "adTenantId",
+        };
+
+        UpdateInterventionRulesHandler handler = GetHandler(rxccGroup, null);
+
+        var response = await Assert.ThrowsAsync<NotFoundException>(() => handler.Handle(request, CancellationToken.None));
+
+        Assert.Equal("rxccGroup: must have a rxcc group name id", response.Message);
+    }
+
+    private UpdateInterventionRuleRequest GetRequest(bool isSelected = true)
+    {
+        return new UpdateInterventionRuleRequest()
+        {
+            selectedInterventionRules = new List<SelectedInterventionRule>()
+            {
+                new SelectedInterventionRule()
+                {
+                    ruleId = "ruleId",
+                    selected = isSelected
+                }
+            }
+        };
+    }
+
+    private UpdateInterventionRulesHandler GetHandler(RxccGroup rxccGroup, List<InterventionRule> interventionRules)
+    {
+        var repo = new Mock<IInterventionRuleRepo>();
+        var repoBuilder = new Mock<IInterventionRuleRepoBuilder<IInterventionRuleRepo>>();
+        var accessTokenProvider = new Mock<IAccessTokenProvider>();
+        var getRxccGroupByIdApi = new Mock<GetRxccGroupByIdApi>();
+        var logger = new Mock<ILogger<UpdateInterventionRulesHandler>>();
+
+        repoBuilder.Setup(r => r.Build())
+           .Returns(() => Task.FromResult(repo.Object));
+
+        repo.Setup(r => r.GetInterventionRules(It.IsAny<string>()))
+            .Returns(() => Task.FromResult(interventionRules));
+
+
+        accessTokenProvider.Setup(p => p.GetAccessToken(It.IsAny<string>()))
+                .Returns(() => Task.FromResult<string>(null!)!);
+
+        getRxccGroupByIdApi.Setup(a => a.SendAsync(It.IsAny<GetRxccGroupByIdApiRequest>(), It.IsAny<string>()))
+            .Returns(() => Task.FromResult(rxccGroup)!);
+
+        return new UpdateInterventionRulesHandler(repoBuilder.Object, accessTokenProvider.Object, getRxccGroupByIdApi.Object, logger.Object); ;
+    }
+}
+
