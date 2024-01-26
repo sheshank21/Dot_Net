@@ -1,0 +1,4 @@
+            mockSearchClient.Verify(client => client.UploadDocuments(It.Is<List<InterventionRuleSearch>>(
+                searchDocuments => searchDocuments.Count == interventionRules.Count &&
+                                   searchDocuments.TrueForAll(doc => interventionRules.Exists(rule => rule.Property == doc.Property))
+            )), Times.Once);
