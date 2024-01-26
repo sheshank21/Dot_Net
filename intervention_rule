@@ -1,0 +1,9 @@
+private void UpdateInterventionRules(List<InterventionRule> interventionRules)
+{
+    Logger.LogInformation("RxccGroupInterventionRule - push document to cogs index");
+    foreach (var interventionRule in interventionRules)
+    {
+        InterventionRuleSearch createdInterventionRuleSearch = interventionRule.ToInterventionRuleSearch();
+        _searchClient.UploadDocuments(new List<InterventionRuleSearch>() { createdInterventionRuleSearch });
+    }
+}
