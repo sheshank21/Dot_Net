@@ -1,0 +1,108 @@
+using Excellus.Azure.Rxcc.Api.Models.Formulary;
+using Excellus.Azure.Rxcc.Api.Models.InterventionRule;
+using Excellus.Azure.Rxcc.Api.RxccInterventionRule.Data;
+using Excellus.Azure.Rxcc.Api.RxccInterventionRule.Domain.Exceptions;
+using Excellus.Azure.Rxcc.Api.RxccInterventionRule.Handlers;
+using Excellus.Azure.Rxcc.Api.RxccInterventionRule.Model;
+using Excellus.Azure.Rxcc.Api.RxccInterventionRule.Model.Requests;
+using Microsoft.Extensions.Logging;
+using Moq;
+using RxCC.Shared.Exceptions;
+using RxCC.Shared.ExternalApi;
+using RxCC.Shared.ExternalApi.Adapters;
+using RxCC.Shared.ExternalApi.Requests;
+using System.Collections.Generic;
+using System.Data;
+using System.Threading;
+using System.Threading.Tasks;
+using Xunit;
+using static Excellus.Azure.Rxcc.Api.Models.InterventionRule.InterventionRule;
+
+namespace Excellus.Azure.Rxcc.Api.RxccFormulary.Tests.HandlerTests;
+public class UpdateInterventionRulesHandlerTests
+{
+    public UpdateInterventionRulesHandlerTests()
+    {
+
+    }
+
+    [Fact]
+    public async Task Handler_Succeeds_Add()
+    {
+        UpdateInterventionRuleRequest request = GetRequest();
+
+        var rxccGroup = new RxccGroup()
+        {
+            RxccGroupName = "rxccGroupName",
+            FormularyId = "formularyId",
+            AdTenantId = "adTenantId",
+        };
+
+        var interventionRules = new List<InterventionRule>()
+        {
+            new InterventionRule()
+            {
+                ruleId = "ruleId",
+                formularyTenantsGroups = new List<InterventionRule.FormularyTenantGroup>{
+                    new InterventionRule.FormularyTenantGroup()
+                    {
+                        formularyId = "formularyId",
+                        tenantGroups = new List<InterventionRule.TenantGroup>()
+                        {
+                            new InterventionRule.TenantGroup()
+                            {
+                                adTenantId = "adTenantId",
+                                rxccGroupName = new List<string>() { "rxccGroupName2" }.ToArray()
+                            }
+                        }.ToArray()
+                    }
+                }.ToArray()
+            }
+        };
+
+        UpdateInterventionRulesHandler handler = GetHandler(rxccGroup, interventionRules);
+
+        var response = await handler.Handle(
+            request,
+            CancellationToken.None
+            );
+
+        Assert.NotNull(response);
+    }
+
+    [Fact]
+    public async Task Handler_Succeeds_Add_No_TenantGroup()
+    {
+        UpdateInterventionRuleRequest request = GetRequest();
+
+        var rxccGroup = new RxccGroup()
+        {
+            RxccGroupName = "rxccGroupName",
+            FormularyId = "formularyId",
+            AdTenantId = "adTenantId",
+        };
+
+        var interventionRules = new List<InterventionRule>()
+        {
+            new InterventionRule()
+            {
+                ruleId = "ruleId",
+                formularyTenantsGroups = new List<InterventionRule.FormularyTenantGroup>{
+                    new InterventionRule.FormularyTenantGroup()
+                    {
+                        formularyId = "formularyId",
+                    }
+                }.ToArray()
+            }
+        };
+
+        UpdateInterventionRulesHandler handler = GetHandler(rxccGroup, interventionRules);
+
+        var response = await handler.Handle(
+            request,
+            CancellationToken.None
+            );
+
+        Assert.NotNull(response);
+    }
+
