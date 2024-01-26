@@ -1,0 +1,43 @@
+[Fact]
+public async Task UpdateInterventionRules_AddsAndRemovesRulesCorrectly()
+{
+    // Arrange
+    var interventionRuleRepo = new Mock<IInterventionRuleRepo>();
+    var interventionRuleRepoBuilder = new Mock<IInterventionRuleRepoBuilder<IInterventionRuleRepo>>();
+    var accessTokenProvider = new Mock<IAccessTokenProvider>();
+    var getRxccGroupByIdApi = new Mock<GetRxccGroupByIdApi>();
+    var logger = new Mock<ILogger<UpdateInterventionRulesHandler>>();
+    var searchClient = new Mock<SearchClient>(); // Assuming SearchClient can be mocked like this
+
+    var rxccGroup = CreateTestRxccGroup();
+    var selectedRules = CreateSelectedRules();
+    var existingRules = CreateExistingRules();
+
+    interventionRuleRepo.Setup(r => r.GetInterventionRules(It.IsAny<string>()))
+        .ReturnsAsync(existingRules);
+
+    interventionRuleRepoBuilder.Setup(r => r.Build())
+        .ReturnsAsync(interventionRuleRepo.Object);
+
+    var handler = new UpdateInterventionRulesHandler(
+        interventionRuleRepoBuilder.Object, 
+        accessTokenProvider.Object, 
+        getRxccGroupByIdApi.Object, 
+        searchClient.Object, 
+        logger.Object
+    );
+
+    // Act
+    var updatedRules = await handler.UpdateInterventionRules(rxccGroup, selectedRules);
+
+    // Assert
+    Assert.NotNull(updatedRules);
+    Assert.Equal(expectedRuleCount, updatedRules.Count); // Replace 'expectedRuleCount' with the expected number of rules
+
+    // Additional assertions to verify the specific changes in the rules
+    foreach (var rule in updatedRules)
+    {
+        // Assert conditions based on your logic, e.g.,
+        Assert.True(rule.SomeProperty == expectedValue); // Replace with your actual conditions
+    }
+}
