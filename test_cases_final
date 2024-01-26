@@ -1,0 +1,47 @@
+using System.Collections.Generic;
+using Moq;
+using Xunit;
+using Microsoft.Extensions.Logging;
+using Azure.Search.Documents;
+using Excellus.Azure.Rxcc.Api.RxccInterventionRule.Handlers;
+
+namespace Excellus.Azure.Rxcc.Api.RxccFormulary.Tests.HandlerTests
+{
+    public class UpdateInterventionRulesHandlerTests
+    {
+        [Fact]
+        public void UpdateInterventionRules_UploadsDocuments()
+        {
+            // Arrange
+            var mockLogger = new Mock<ILogger<UpdateInterventionRulesHandler>>();
+            var mockSearchClient = new Mock<SearchClient>(new Uri("https://your-search-service-name.search.windows.net"), "your-index-name", new SearchIndexClientOptions());
+
+            var handler = new UpdateInterventionRulesHandler(
+                null, // You can pass a mock for IInterventionRuleRepoBuilder if needed
+                null, // You can pass a mock for IAccessTokenProvider if needed
+                null, // You can pass a mock for GetRxccGroupByIdApi if needed
+                mockSearchClient.Object,
+                mockLogger.Object
+            );
+
+            var interventionRules = new List<InterventionRule>
+            {
+                // Create some test InterventionRule instances
+                new InterventionRule { /* Set properties */ },
+                // Add more test rules as needed
+            };
+
+            // Act
+            handler.UpdateInterventionRules(interventionRules);
+
+            // Assert
+            mockLogger.Verify(logger => logger.LogInformation(It.IsAny<string>()), Times.Once);
+
+            // Verify that UploadDocuments is called with the correct list of InterventionRuleSearch instances
+            mockSearchClient.Verify(client => client.UploadDocuments(It.Is<List<InterventionRuleSearch>>(
+                searchDocuments => searchDocuments.Count == interventionRules.Count &&
+                                   searchDocuments.TrueForAll(doc => interventionRules.Exists(rule => rule.Property == doc.Property))
+            )), Times.Once);
+        }
+    }
+}
