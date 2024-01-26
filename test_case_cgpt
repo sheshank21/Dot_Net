@@ -1,0 +1,55 @@
+using System.Collections.Generic;
+using Moq;
+using NUnit.Framework;
+
+[TestFixture]
+public class UpdateInterventionRulesHandlerTests
+{
+    [Test]
+    public void UpdateInterventionRules_UploadsDocumentsToSearchIndex()
+    {
+        // Arrange
+        var interventionRules = new List<InterventionRule>
+        {
+            // Create sample InterventionRule instances for testing
+            new InterventionRule { RuleId = 1, /* other properties */ },
+            new InterventionRule { RuleId = 2, /* other properties */ },
+            // Add more sample rules as needed
+        };
+
+        var mockLogger = new Mock<ILogger<UpdateInterventionRulesHandler>>();
+        var mockSearchClient = new Mock<SearchClient>();
+
+        var updateInterventionRulesHandler = new UpdateInterventionRulesHandler(
+            /* provide necessary dependencies */,
+            mockLogger.Object,
+            mockSearchClient.Object
+        );
+
+        // Act
+        updateInterventionRulesHandler.UpdateInterventionRules(interventionRules);
+
+        // Assert
+        // Verify that UploadDocuments is called for each InterventionRule
+        foreach (var interventionRule in interventionRules)
+        {
+            mockSearchClient.Verify(
+                client => client.UploadDocuments(
+                    It.Is<List<InterventionRuleSearch>>(searchList => 
+                        searchList.Count == 1 && searchList[0].RuleId == interventionRule.RuleId
+                        /* Add other assertions based on your data mapping logic */
+                    )
+                ),
+                Times.Once
+            );
+        }
+
+        // Verify that the logger logs the expected message
+        mockLogger.Verify(
+            logger => logger.LogInformation(It.Is<string>(message => message.Contains("push document to cogs index"))),
+            Times.Once
+        );
+    }
+
+    // Add more test cases as needed to cover edge cases, error scenarios, etc.
+}
