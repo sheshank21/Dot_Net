@@ -1,0 +1,91 @@
+using Azure.Search.Documents;
+using Excellus.Azure.Rxcc.Api.Models.Formulary;
+using Excellus.Azure.Rxcc.Api.Models.InterventionRule;
+using Excellus.Azure.Rxcc.Api.RxccInterventionRule.Data;
+using Excellus.Azure.Rxcc.Api.RxccInterventionRule.Domain.Extensions;
+using Excellus.Azure.Rxcc.Api.RxccInterventionRule.Model;
+using Excellus.Azure.Rxcc.Api.RxccInterventionRule.Model.Requests;
+using Excellus.Azure.Rxcc.Api.RxccInterventionRule.Model.Responses;
+using MediatR;
+using Microsoft.Extensions.Logging;
+using RxCC.Shared.Exceptions;
+using RxCC.Shared.ExternalApi;
+using RxCC.Shared.ExternalApi.Adapters;
+using RxCC.Shared.ExternalApi.Requests;
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Threading;
+using System.Threading.Tasks;
+using static Excellus.Azure.Rxcc.Api.Models.InterventionRule.InterventionRule;
+using FormularyTenantGroup = Excellus.Azure.Rxcc.Api.Models.InterventionRule.InterventionRule.FormularyTenantGroup;
+using TenantGroup = Excellus.Azure.Rxcc.Api.Models.InterventionRule.InterventionRule.TenantGroup;
+
+namespace Excellus.Azure.Rxcc.Api.RxccInterventionRule.Handlers;
+
+public class UpdateInterventionRulesHandler : IRequestHandler<UpdateInterventionRuleRequest, UpdateInterventionRuleResponse>
+{
+    protected IInterventionRuleRepoBuilder<IInterventionRuleRepo> InterventionRuleRepoBuilder { get; set; }
+    protected readonly IAccessTokenProvider AccessTokenProvider;
+    protected GetRxccGroupByIdApi GetRxccGroupByIdApi { get; init; }
+    protected ILogger Logger { get; init; }
+    protected readonly SearchClient _searchClient;
+    public UpdateInterventionRulesHandler(
+        IInterventionRuleRepoBuilder<IInterventionRuleRepo> interventionRuleRepoBuilder,
+        IAccessTokenProvider accessTokenProvider,
+        GetRxccGroupByIdApi getRxccGroupByIdApi,
+        SearchClient searchClient,
+        ILogger<UpdateInterventionRulesHandler> logger)
+    {
+        InterventionRuleRepoBuilder = interventionRuleRepoBuilder;
+        AccessTokenProvider = accessTokenProvider;
+        GetRxccGroupByIdApi = getRxccGroupByIdApi;
+        Logger = logger;
+        _searchClient = searchClient;
+    }
+    public virtual async Task<UpdateInterventionRuleResponse> Handle(UpdateInterventionRuleRequest updateInterventionRuleRequest, CancellationToken cancellationToken)
+    {
+        RxccGroup rxccGroup = await GetRxCCGroup(updateInterventionRuleRequest);
+
+        List<InterventionRule> rules = await UpdateInterventionRules(rxccGroup, updateInterventionRuleRequest.selectedInterventionRules);
+
+        return new UpdateInterventionRuleResponse()
+        {
+            InterventionRules = rules
+        };
+    }
+
+    private async Task<RxccGroup> GetRxCCGroup(UpdateInterventionRuleRequest updateInterventionRuleRequest)
+    {
+        string token = await AccessTokenProvider.GetAccessToken();
+
+        GetRxccGroupByIdApiRequest rxccGroupRequest = new GetRxccGroupByIdApiRequest() { Id = updateInterventionRuleRequest.rxccgroupId, FormularyId = updateInterventionRuleRequest.formularyId };
+
+        RxccGroup rxccGroup = await GetRxccGroupByIdApi.SendAsync(rxccGroupRequest, token);
+
+        if (rxccGroup == null)
+        {
+            Logger.LogError($"rxccGroupId: {updateInterventionRuleRequest.rxccgroupId} could not be found.");
+            throw new NotFoundException($"rxccGroupId: '{updateInterventionRuleRequest.formularyId}' could not be found.");
+        }
+
+        if (string.IsNullOrWhiteSpace(rxccGroup.FormularyId))
+        {
+            Logger.LogError($"rxccGroup: must have a formulary id");
+            throw new NotFoundException($"rxccGroup: must have a formulary id");
+        }
+
+        if (string.IsNullOrWhiteSpace(rxccGroup.AdTenantId))
+        {
+            Logger.LogError($"rxccGroup: must have an adTenant id");
+            throw new NotFoundException($"rxccGroup: must have an adTenant id");
+        }
+
+        if (string.IsNullOrWhiteSpace(rxccGroup.RxccGroupName))
+        {
+            Logger.LogError($"rxccGroup: must have a rxcc group name id");
+            throw new NotFoundException($"rxccGroup: must have a rxcc group name id");
+        }
+
+        return rxccGroup;
+    }
