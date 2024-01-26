@@ -1,4 +1,258 @@
-mockSearchClient.Verify(client => client.UploadDocuments(
-    It.Is<List<InterventionRuleSearch>>(
-        searchDocuments => searchDocuments.Count == interventionRules.Count
-    )), Times.Once);
+using Azure.Search.Documents;
+using Excellus.Azure.Rxcc.Api.Models.Formulary;
+using Excellus.Azure.Rxcc.Api.Models.InterventionRule;
+using Excellus.Azure.Rxcc.Api.RxccInterventionRule.Data;
+using Excellus.Azure.Rxcc.Api.RxccInterventionRule.Domain.Extensions;
+using Excellus.Azure.Rxcc.Api.RxccInterventionRule.Model;
+using Excellus.Azure.Rxcc.Api.RxccInterventionRule.Model.Requests;
+using Excellus.Azure.Rxcc.Api.RxccInterventionRule.Model.Responses;
+using MediatR;
+using Microsoft.Extensions.Logging;
+using RxCC.Shared.Exceptions;
+using RxCC.Shared.ExternalApi;
+using RxCC.Shared.ExternalApi.Adapters;
+using RxCC.Shared.ExternalApi.Requests;
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Threading;
+using System.Threading.Tasks;
+using static Excellus.Azure.Rxcc.Api.Models.InterventionRule.InterventionRule;
+using FormularyTenantGroup = Excellus.Azure.Rxcc.Api.Models.InterventionRule.InterventionRule.FormularyTenantGroup;
+using TenantGroup = Excellus.Azure.Rxcc.Api.Models.InterventionRule.InterventionRule.TenantGroup;
+
+namespace Excellus.Azure.Rxcc.Api.RxccInterventionRule.Handlers;
+
+public class UpdateInterventionRulesHandler : IRequestHandler<UpdateInterventionRuleRequest, UpdateInterventionRuleResponse>
+{
+    protected IInterventionRuleRepoBuilder<IInterventionRuleRepo> InterventionRuleRepoBuilder { get; set; }
+    protected readonly IAccessTokenProvider AccessTokenProvider;
+    protected GetRxccGroupByIdApi GetRxccGroupByIdApi { get; init; }
+    protected ILogger Logger { get; init; }
+    protected readonly SearchClient _searchClient;
+    public UpdateInterventionRulesHandler(
+        IInterventionRuleRepoBuilder<IInterventionRuleRepo> interventionRuleRepoBuilder,
+        IAccessTokenProvider accessTokenProvider,
+        GetRxccGroupByIdApi getRxccGroupByIdApi,
+        SearchClient searchClient,
+        ILogger<UpdateInterventionRulesHandler> logger)
+    {
+        InterventionRuleRepoBuilder = interventionRuleRepoBuilder;
+        AccessTokenProvider = accessTokenProvider;
+        GetRxccGroupByIdApi = getRxccGroupByIdApi;
+        Logger = logger;
+        _searchClient = searchClient;
+    }
+    public virtual async Task<UpdateInterventionRuleResponse> Handle(UpdateInterventionRuleRequest updateInterventionRuleRequest, CancellationToken cancellationToken)
+    {
+        RxccGroup rxccGroup = await GetRxCCGroup(updateInterventionRuleRequest);
+
+        List<InterventionRule> rules = await UpdateInterventionRules(rxccGroup, updateInterventionRuleRequest.selectedInterventionRules);
+
+        return new UpdateInterventionRuleResponse()
+        {
+            InterventionRules = rules
+        };
+    }
+
+    private async Task<RxccGroup> GetRxCCGroup(UpdateInterventionRuleRequest updateInterventionRuleRequest)
+    {
+        string token = await AccessTokenProvider.GetAccessToken();
+
+        GetRxccGroupByIdApiRequest rxccGroupRequest = new GetRxccGroupByIdApiRequest() { Id = updateInterventionRuleRequest.rxccgroupId, FormularyId = updateInterventionRuleRequest.formularyId };
+
+        RxccGroup rxccGroup = await GetRxccGroupByIdApi.SendAsync(rxccGroupRequest, token);
+
+        if (rxccGroup == null)
+        {
+            Logger.LogError($"rxccGroupId: {updateInterventionRuleRequest.rxccgroupId} could not be found.");
+            throw new NotFoundException($"rxccGroupId: '{updateInterventionRuleRequest.formularyId}' could not be found.");
+        }
+
+        if (string.IsNullOrWhiteSpace(rxccGroup.FormularyId))
+        {
+            Logger.LogError($"rxccGroup: must have a formulary id");
+            throw new NotFoundException($"rxccGroup: must have a formulary id");
+        }
+
+        if (string.IsNullOrWhiteSpace(rxccGroup.AdTenantId))
+        {
+            Logger.LogError($"rxccGroup: must have an adTenant id");
+            throw new NotFoundException($"rxccGroup: must have an adTenant id");
+        }
+
+        if (string.IsNullOrWhiteSpace(rxccGroup.RxccGroupName))
+        {
+            Logger.LogError($"rxccGroup: must have a rxcc group name id");
+            throw new NotFoundException($"rxccGroup: must have a rxcc group name id");
+        }
+
+        return rxccGroup;
+    }
+
+    private async Task<List<InterventionRule>> UpdateInterventionRules(RxccGroup rxccGroup, List<SelectedInterventionRule> selectedRules)
+    {
+        var repo = await InterventionRuleRepoBuilder.Build();
+
+        string userName = await AccessTokenProvider.GetCurrentUsername();
+        DateTime now = DateTime.Now;
+
+        List<InterventionRule> interventionRules = await repo.GetInterventionRules("Active");
+        List<Task> rulesToUpdate = new List<Task>();
+
+        foreach (var selectedInterventionRule in selectedRules)
+        {
+            var interventionRule = interventionRules?.FirstOrDefault(rule => rule.ruleId == selectedInterventionRule.ruleId);
+
+            if (interventionRule == null)
+            {
+                Logger.LogError($"InterventionRuleId: {selectedInterventionRule.ruleId} could not be found.");
+                throw new NotFoundException($"InterventionRuleId: '{selectedInterventionRule.ruleId}' could not be found.");
+            }
+
+            bool isDirty = true;
+
+            if (selectedInterventionRule.selected)
+            {
+                isDirty = AddRxccGroupName(interventionRule, rxccGroup, selectedInterventionRule);
+            }
+            else
+            {
+                isDirty = RemoveRxccGroupName(interventionRule, rxccGroup, selectedInterventionRule);
+            }
+
+            if (isDirty)
+            {
+                rulesToUpdate.Add(SaveInterventionRule(repo, interventionRule, userName, now));
+            }
+
+        }
+
+        await Task.WhenAll(rulesToUpdate);
+        UpdateInterventionRules(interventionRules);
+        return interventionRules;
+    }
+
+     public void UpdateInterventionRules(List<InterventionRule> interventionRules)
+    {
+        Logger.LogInformation("RxccGroupInterventionRule - push document to cogs index");
+        foreach (var interventionRule in interventionRules)
+        {
+            InterventionRuleSearch createdInterventionRuleSearch = interventionRule.ToInterventionRuleSearch();
+            _searchClient.UploadDocuments(new List<InterventionRuleSearch>() { createdInterventionRuleSearch });
+        }
+    }
+
+    private bool AddRxccGroupName(InterventionRule interventionRule, RxccGroup rxccGroup, SelectedInterventionRule selectedInterventionRule)
+    {
+        if (interventionRule.formularyTenantsGroups == null)
+        {
+            // formularyTenantsGroups does not exist in the data so create it with the rule added
+            interventionRule.formularyTenantsGroups = new List<FormularyTenantGroup>() {
+                    CreateFormularyTenantGroup(rxccGroup.FormularyId, rxccGroup.AdTenantId, rxccGroup.RxccGroupName)
+                }.ToArray();
+            return true;   
+        }
+
+        var formularyTenantsGroup = interventionRule.formularyTenantsGroups?.FirstOrDefault(g => g.formularyId == rxccGroup.FormularyId);
+
+        if (formularyTenantsGroup == null)
+        {
+            // formularyTenantsGroupsdoes not exist in the data so create it with the rule added
+            var groups = interventionRule.formularyTenantsGroups?.ToList();
+            groups.Add(CreateFormularyTenantGroup(rxccGroup.FormularyId, rxccGroup.AdTenantId, rxccGroup.RxccGroupName));
+            interventionRule.formularyTenantsGroups = groups.ToArray();
+            return true;
+        }
+         
+        var tenantGroup = formularyTenantsGroup.tenantGroups?.FirstOrDefault(g => g.adTenantId == rxccGroup.AdTenantId);
+
+        if (tenantGroup == null)
+        {
+            // tenantGroups does not exist in the data so create it with the rule added
+            var groups = formularyTenantsGroup.tenantGroups?.ToList();
+            groups.Add(CreateTenantGroup(rxccGroup.AdTenantId, rxccGroup.RxccGroupName));
+            formularyTenantsGroup.tenantGroups = groups.ToArray();
+            return true;
+        }
+
+        var names = tenantGroup.rxccGroupName?.ToList();
+
+        if (selectedInterventionRule.selected && !names.Contains(rxccGroup.RxccGroupName))
+        {
+            // The rule is selected and needs to be added
+            names.Add(rxccGroup.RxccGroupName);
+            tenantGroup.rxccGroupName = names.ToArray();
+            return true;
+        }
+
+        return false;
+    }
+
+    private bool RemoveRxccGroupName(InterventionRule interventionRule, RxccGroup rxccGroup, SelectedInterventionRule selectedInterventionRule)
+    {
+        var formularyTenantsGroup = interventionRule.formularyTenantsGroups?.FirstOrDefault(g => g.formularyId == rxccGroup.FormularyId);
+        var tenantGroup = formularyTenantsGroup?.tenantGroups?.FirstOrDefault(g => g.adTenantId == rxccGroup.AdTenantId);
+
+        if (interventionRule.formularyTenantsGroups != null && formularyTenantsGroup != null && tenantGroup != null)
+        {
+            var names = tenantGroup.rxccGroupName?.ToList();
+
+            if (!selectedInterventionRule.selected && names.Contains(rxccGroup.RxccGroupName))
+            {
+                // The rule is not selected and needs to be removed
+                names.Remove(rxccGroup.RxccGroupName);
+                tenantGroup.rxccGroupName = names.ToArray();
+                CleanupFormularyTenantsGroup(interventionRule, formularyTenantsGroup, tenantGroup);
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private FormularyTenantGroup CreateFormularyTenantGroup(string formularyId, string adTenantId, string rxccGroupName)
+    {
+        return new FormularyTenantGroup()
+        {
+            formularyId = formularyId,
+            tenantGroups = new List<TenantGroup>() {
+                                    CreateTenantGroup(adTenantId, rxccGroupName)
+                                }.ToArray()
+        };
+    }
+
+    private TenantGroup CreateTenantGroup(string adTenantId, string rxccGroupName)
+    {
+        return new TenantGroup()
+        {
+            adTenantId = adTenantId,
+            rxccGroupName = new List<string>() { rxccGroupName }.ToArray()
+        };
+    }
+
+    private async Task<InterventionRule> SaveInterventionRule(IInterventionRuleRepo repo, InterventionRule interventionRule, string userName, DateTime now)
+    {
+        interventionRule.lastUpdatedBy = userName;
+        interventionRule.lastUpdatedDateTime = now;
+        return await repo.ReplaceInterventionRule(interventionRule);
+    }
+
+    private void CleanupFormularyTenantsGroup(InterventionRule interventionRule, FormularyTenantGroup formularyTenantGroup, TenantGroup tenantGroup)
+    {
+        if (!tenantGroup.rxccGroupName.Any())
+        {
+            var tenantGroups = formularyTenantGroup.tenantGroups.ToList();
+            tenantGroups.Remove(tenantGroup);
+            formularyTenantGroup.tenantGroups = tenantGroups.ToArray();
+
+            if (!formularyTenantGroup.tenantGroups.Any())
+            {
+                var formularyTenantsGroups = interventionRule.formularyTenantsGroups.ToList();
+                formularyTenantsGroups.Remove(formularyTenantGroup);
+                interventionRule.formularyTenantsGroups = formularyTenantsGroups.ToArray();
+            }
+        }
+    }
+
+}
